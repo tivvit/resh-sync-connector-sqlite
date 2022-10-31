@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -14,13 +15,15 @@ func New(confPath string) *Config {
 
 	confFromFile, err := os.ReadFile(confPath)
 	if err != nil {
-		// TODO log problems
+		log.Error().Err(err).
+			Str("config file", confPath).
+			Msg("loading configuration file failed")
 		return conf
 	}
 
 	err = yaml.Unmarshal(confFromFile, conf)
 	if err != nil {
-		// TODO log problems
+		log.Error().Err(err).Msg("unmarshalling YAML failed")
 		return conf
 	}
 	return conf

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/curusarn/resh/pkg/records"
+	"github.com/rs/zerolog/log"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/config"
 	"math/rand"
 	"net/http"
@@ -38,6 +39,10 @@ func main() {
 	configPath := flag.String("configPath", "conf.yml", "config path absolute or relative to binary")
 
 	conf := config.New(*configPath)
+	log.Info().
+		Str("config file", *configPath).
+		Interface("config", conf).
+		Msg("configuration loaded")
 
 	http.HandleFunc("/store", store)
 	http.HandleFunc("/history", history)

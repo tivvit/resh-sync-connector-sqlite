@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/curusarn/resh/pkg/records"
+	"github.com/tivvit/resh-sync-connector-sqlite/internal/config"
 	"math/rand"
 	"net/http"
 )
@@ -33,10 +35,14 @@ func latest(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	configPath := flag.String("configPath", "conf.yml", "config path absolute or relative to binary")
+
+	conf := config.New(*configPath)
+
 	http.HandleFunc("/store", store)
 	http.HandleFunc("/history", history)
 	http.HandleFunc("/latest", latest)
-	err := http.ListenAndServe(":1234", nil)
+	err := http.ListenAndServe(conf.Address, nil)
 	if err != nil {
 		panic(err)
 	}

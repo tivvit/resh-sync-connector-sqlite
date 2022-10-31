@@ -1,1 +1,1 @@
-# resh-sync-connector-sqlite-
+# resh-sync-connector-sqlite

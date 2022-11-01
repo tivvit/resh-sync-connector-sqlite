@@ -12,11 +12,18 @@ import (
 )
 
 func history(w http.ResponseWriter, req *http.Request) {
-	record := records.BaseRecord{
+	// TODO read request
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	// TODO: change to refactored record.V1
+	var recs []records.BaseRecord
+	recs = append(recs, records.BaseRecord{
 		CmdLine: fmt.Sprint("FAKE_TEST_", rand.Intn(100)),
 		Host:    "__TEST__",
-	}
-	responseJson, err := json.Marshal(record)
+	})
+	responseJson, err := json.Marshal(recs)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

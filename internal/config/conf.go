@@ -7,7 +7,8 @@ import (
 )
 
 type Config struct {
-	Address string `yaml:"address"`
+	Address    string `yaml:"address"`
+	SqlitePath string `yaml:"sqlite-path"`
 }
 
 func New(confPath string) *Config {
@@ -31,6 +32,7 @@ func New(confPath string) *Config {
 
 func defaultConfig() *Config {
 	return &Config{
-		Address: "localhost:8080",
+		Address:    "localhost:8080",
+		SqlitePath: "db.sqlite",
 	}
 }

@@ -1,27 +1,30 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/curusarn/resh/pkg/records"
+	"github.com/curusarn/resh/record"
 	"github.com/rs/zerolog/log"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/config"
+	"github.com/tivvit/resh-sync-connector-sqlite/internal/storage"
 	"math/rand"
 	"net/http"
+	"time"
 )
 
-func history(w http.ResponseWriter, req *http.Request) {
+func history(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 	// TODO read request
 	if req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	// TODO: change to refactored record.V1
-	var recs []records.BaseRecord
-	recs = append(recs, records.BaseRecord{
-		CmdLine: fmt.Sprint("FAKE_TEST_", rand.Intn(100)),
-		Host:    "__TEST__",
+	var recs []record.V1
+	recs = append(recs, record.V1{
+		CmdLine: fmt.Sprint("FAKE_TEST_", rand.Intn(1000)),
+		Device:  "__TEST__",
+		Time:    fmt.Sprintf("%.4f", float64(time.Now().Unix())),
 	})
 	responseJson, err := json.Marshal(recs)
 	if err != nil {
@@ -36,10 +39,11 @@ func history(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func store(w http.ResponseWriter, req *http.Request) {
+func store(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 }
 
-func latest(w http.ResponseWriter, req *http.Request) {
+func latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {
+
 }
 
 func main() {
@@ -51,11 +55,26 @@ func main() {
 		Interface("config", conf).
 		Msg("configuration loaded")
 
-	http.HandleFunc("/store", store)
-	http.HandleFunc("/history", history)
-	http.HandleFunc("/latest", latest)
-	err := http.ListenAndServe(conf.Address, nil)
+	db, err := storage.ConnectDb(conf.SqlitePath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", conf.SqlitePath).Msg("connecting to DB failed")
+	}
+
+	http.HandleFunc("/store", func(w http.ResponseWriter, r *http.Request) {
+		store(db, w, r)
+	})
+	http.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+		history(db, w, r)
+	})
+	http.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
+		latest(db, w, r)
+	})
+	err = http.ListenAndServe(conf.Address, nil)
 	if err != nil {
 		panic(err)
+	}
+	err = db.Close()
+	if err != nil {
+		log.Error().Err(err).Msg("closing DB failed")
 	}
 }

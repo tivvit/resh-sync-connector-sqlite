@@ -43,7 +43,36 @@ func store(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 }
 
 func latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {
-
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var devices []string
+	err := json.NewDecoder(req.Body).Decode(&devices)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	devicesSet := map[string]struct{}{}
+	for _, device := range devices {
+		devicesSet[device] = struct{}{}
+	}
+	lst, err := storage.LatestEntryPerDeviceId(db, devicesSet)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	responseJson, err := json.Marshal(lst)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(responseJson)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func main() {

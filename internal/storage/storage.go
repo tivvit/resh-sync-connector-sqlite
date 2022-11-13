@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rs/zerolog/log"
 )
 
 func initDb(path string) (*sql.DB, error) {
@@ -29,7 +30,31 @@ func ConnectDb(path string) (*sql.DB, error) {
 	return initDb(path)
 }
 
-func LatestEntryPerDeviceId(db *sql.DB) (map[string]string, error) {
-	// TODO
-	return nil, nil
+func LatestEntryPerDeviceId(db *sql.DB, devices map[string]struct{}) (map[string]string, error) {
+	rows, err := db.Query("select `deviceId`, max(`time`) from `records` GROUP BY `deviceId`")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("closing latest query failed")
+		}
+	}(rows)
+
+	latest := map[string]string{}
+	for rows.Next() {
+		var deviceId string
+		var time string
+		err = rows.Scan(&deviceId, &time)
+		if err != nil {
+			return nil, err
+		}
+		_, ok := devices[deviceId]
+		if len(devices) == 0 || ok {
+			latest[deviceId] = time
+		}
+	}
+	return latest, nil
 }

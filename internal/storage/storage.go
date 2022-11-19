@@ -2,8 +2,11 @@ package storage
 
 import (
 	"database/sql"
+	"fmt"
+	"github.com/curusarn/resh/record"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog/log"
+	"time"
 )
 
 func initDb(path string) (*sql.DB, error) {
@@ -57,4 +60,77 @@ func LatestEntryPerDeviceId(db *sql.DB, devices map[string]struct{}) (map[string
 		}
 	}
 	return latest, nil
+}
+
+func ReadEntries(db *sql.DB, latestFromDevice map[string]float64) ([]record.V1, error) {
+	rows, err := db.Query("select `recordId`, `deviceId`, `sessionId`, `cmdLine`, `exitCode`, `time`, `flags`, " +
+		"`home`, `pwd`, `realPwd`, `device`, `gitOriginRemote`, `duration`, `partOne`, `partsNotMerged`, " +
+		"`sessionExit` from `records`")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("closing read query failed")
+		}
+	}(rows)
+
+	var records []record.V1
+	for rows.Next() {
+		var r record.V1
+		var exitCode, flags sql.NullInt32
+		var home, pwd, realPwd, device, gitOriginRemote, duration sql.NullString
+		var partOne, partsNotMerged, sessionExit sql.NullBool
+		var t time.Time
+		err = rows.Scan(&r.RecordID, &r.DeviceID, &r.SessionID, &r.CmdLine, &exitCode, &t, &flags, &home, &pwd,
+			&realPwd, &device, &gitOriginRemote, &duration, &partOne, &partsNotMerged, &sessionExit)
+		if err != nil {
+			return nil, err
+		}
+		// Filter out old records from known devices.
+		// There is a more optimal solution using conditions in the SQL query but is not trivial to build it.
+		if l, ok := latestFromDevice[r.DeviceID]; ok {
+			if float64(t.Unix()) <= l {
+				continue
+			}
+		}
+		r.Time = fmt.Sprintf("%.4f", float64(t.Unix()))
+		if exitCode.Valid {
+			r.ExitCode = int(exitCode.Int32)
+		}
+		if flags.Valid {
+			r.Flags = int(flags.Int32)
+		}
+		if home.Valid {
+			r.Home = home.String
+		}
+		if pwd.Valid {
+			r.Pwd = pwd.String
+		}
+		if realPwd.Valid {
+			r.RealPwd = realPwd.String
+		}
+		if device.Valid {
+			r.Device = device.String
+		}
+		if gitOriginRemote.Valid {
+			r.GitOriginRemote = gitOriginRemote.String
+		}
+		if duration.Valid {
+			r.Duration = duration.String
+		}
+		if partOne.Valid {
+			r.PartOne = partOne.Bool
+		}
+		if partsNotMerged.Valid {
+			r.PartsNotMerged = partsNotMerged.Bool
+		}
+		if sessionExit.Valid {
+			r.SessionExit = sessionExit.Bool
+		}
+		records = append(records, r)
+	}
+	return records, nil
 }

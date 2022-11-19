@@ -4,36 +4,51 @@ import (
 	"database/sql"
 	"encoding/json"
 	"flag"
-	"fmt"
-	"github.com/curusarn/resh/record"
 	"github.com/rs/zerolog/log"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/config"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/storage"
-	"math/rand"
 	"net/http"
-	"time"
+	"strconv"
 )
 
 func history(db *sql.DB, w http.ResponseWriter, req *http.Request) {
-	// TODO read request
 	if req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	var recs []record.V1
-	recs = append(recs, record.V1{
-		CmdLine: fmt.Sprint("FAKE_TEST_", rand.Intn(1000)),
-		Device:  "__TEST__",
-		Time:    fmt.Sprintf("%.4f", float64(time.Now().Unix())),
-	})
+	var latest map[string]string
+	err := json.NewDecoder(req.Body).Decode(&latest)
+	if err != nil {
+		log.Error().Err(err).Msg("reading request failed")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	latestFromDevice := map[string]float64{}
+	for deviceId, ts := range latest {
+		t, err := strconv.ParseFloat(ts, 64)
+		if err != nil {
+			log.Error().Str("floatStr", ts).Err(err).Msg("invalid float in the request")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		latestFromDevice[deviceId] = t
+	}
+
+	recs, err := storage.ReadEntries(db, latestFromDevice)
+	if err != nil {
+		log.Error().Err(err).Msg("reading records from DB failed")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	responseJson, err := json.Marshal(recs)
 	if err != nil {
+		log.Error().Err(err).Msg("marshalling json failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(responseJson)
 	if err != nil {
+		log.Error().Err(err).Msg("writing response failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -50,6 +65,7 @@ func latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 	var devices []string
 	err := json.NewDecoder(req.Body).Decode(&devices)
 	if err != nil {
+		log.Error().Err(err).Msg("reading request failed")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -59,17 +75,20 @@ func latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 	}
 	lst, err := storage.LatestEntryPerDeviceId(db, devicesSet)
 	if err != nil {
+		log.Error().Err(err).Msg("reading latest entry from the DB failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	responseJson, err := json.Marshal(lst)
 	if err != nil {
+		log.Error().Err(err).Msg("marshalling json failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(responseJson)
 	if err != nil {
+		log.Error().Err(err).Msg("writing response failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -96,6 +96,13 @@ func Latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	// add requested unknown deviceIds
+	for deviceId, _ := range devicesSet {
+		if _, ok := lst[deviceId]; !ok {
+			lst[deviceId] = "0.0"
+		}
+	}
+
 	responseJson, err := json.Marshal(lst)
 	if err != nil {
 		log.Error().Err(err).Msg("marshalling json failed")

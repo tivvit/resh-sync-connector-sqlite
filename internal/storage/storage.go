@@ -6,6 +6,9 @@ import (
 	"github.com/curusarn/resh/record"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog/log"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -133,4 +136,42 @@ func ReadEntries(db *sql.DB, latestFromDevice map[string]float64) ([]record.V1, 
 		records = append(records, r)
 	}
 	return records, nil
+}
+
+func StoreRecords(db *sql.DB, records []record.V1) error {
+	const insertQuery = "INSERT INTO `records`(`recordId`, `deviceId`, `sessionId`, `cmdLine`, `exitCode`, `time`, " +
+		"`flags`, `home`, `pwd`, `realPwd`, `device`, `gitOriginRemote`, `duration`, `partOne`, " +
+		"`partsNotMerged`,`sessionExit`) VALUES "
+	const row = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	var inserts []string
+	var values []interface{}
+
+	for _, r := range records {
+		inserts = append(inserts, row)
+		tf, err := strconv.ParseFloat(r.Time, 64)
+		if err != nil {
+			return err
+		}
+		sec, nsec := math.Modf(tf)
+		t := time.Unix(int64(sec), int64(nsec*(1e9)))
+		values = append(values, r.RecordID, r.DeviceID, r.SessionID, r.CmdLine, r.ExitCode, t, r.Flags, r.Home,
+			r.Pwd, r.RealPwd, r.Device, r.GitOriginRemote, r.Duration, r.PartOne, r.PartsNotMerged, r.SessionExit)
+	}
+	sqlStr := insertQuery + strings.Join(inserts, ",")
+
+	stmt, err := db.Prepare(sqlStr)
+	if err != nil {
+		return err
+	}
+
+	defer func(stmt *sql.Stmt) {
+		err := stmt.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("closing write statement failed")
+		}
+	}(stmt)
+
+	_, err = stmt.Exec(values...)
+	return err
 }

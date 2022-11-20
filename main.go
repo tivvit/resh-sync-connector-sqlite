@@ -4,11 +4,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"github.com/curusarn/resh/record"
 	"github.com/rs/zerolog/log"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/config"
 	"github.com/tivvit/resh-sync-connector-sqlite/internal/storage"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 func history(db *sql.DB, w http.ResponseWriter, req *http.Request) {
@@ -55,6 +58,33 @@ func history(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 }
 
 func store(db *sql.DB, w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var records []record.V1
+	err := json.NewDecoder(req.Body).Decode(&records)
+	if err != nil {
+		log.Error().Err(err).Msg("reading request failed")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// TODO remove - this is just a fake record
+	records = append(records, record.V1{
+		CmdLine:   "__test",
+		Time:      fmt.Sprintf("%.4f", float64(time.Now().Unix())),
+		DeviceID:  "test",
+		SessionID: "test",
+		RecordID:  "test1",
+	})
+
+	err = storage.StoreRecords(db, records)
+	if err != nil {
+		log.Error().Err(err).Msg("reading latest entry from the DB failed")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func latest(db *sql.DB, w http.ResponseWriter, req *http.Request) {

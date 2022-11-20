@@ -49,14 +49,14 @@ func LatestEntryPerDeviceId(db *sql.DB, devices map[string]struct{}) (map[string
 	latest := map[string]string{}
 	for rows.Next() {
 		var deviceId string
-		var time string
-		err = rows.Scan(&deviceId, &time)
+		var t string
+		err = rows.Scan(&deviceId, &t)
 		if err != nil {
 			return nil, err
 		}
 		_, ok := devices[deviceId]
 		if len(devices) == 0 || ok {
-			latest[deviceId] = time
+			latest[deviceId] = t
 		}
 	}
 	return latest, nil

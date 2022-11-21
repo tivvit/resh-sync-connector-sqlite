@@ -65,10 +65,9 @@ func Store(db *sql.DB, w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	err = storage.StoreRecords(db, records)
 	if err != nil {
-		log.Error().Err(err).Msg("reading latest entry from the DB failed")
+		log.Error().Err(err).Msg("writing entry to the DB failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

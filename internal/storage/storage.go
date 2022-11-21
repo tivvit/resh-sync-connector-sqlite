@@ -2,18 +2,21 @@ package storage
 
 import (
 	"database/sql"
-	"fmt"
 	"github.com/curusarn/resh/record"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog/log"
+	"github.com/tivvit/resh-sync-connector-sqlite/internal/reshtime"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 )
 
+const numberOfFields = 20       // it is actually 16 this is a safe value
+const oneBatchInsertLimit = 999 // limitation of SQLite https://stackoverflow.com/questions/7106016/too-many-sql-variables-error-in-django-with-sqlite3
+
 func initDb(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite3", path+"?parseTime=True&loc=Local")
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +40,7 @@ func ConnectDb(path string) (*sql.DB, error) {
 }
 
 func LatestEntryPerDeviceId(db *sql.DB, devices map[string]struct{}) (map[string]string, error) {
-	rows, err := db.Query("select `deviceId`, max(`time`) from `records` GROUP BY `deviceId`")
+	rows, err := db.Query("select `deviceId`,  max(`time`) from `records` GROUP BY `deviceId`")
 	if err != nil {
 		return nil, err
 	}
@@ -45,23 +48,29 @@ func LatestEntryPerDeviceId(db *sql.DB, devices map[string]struct{}) (map[string
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
-			log.Error().Err(err).Msg("closing latest query failed")
+			log.Error().Err(err).Msg("closing latestTime query failed")
 		}
 	}(rows)
 
 	latest := map[string]string{}
+
 	for rows.Next() {
 		var deviceId string
-		var t string
-		err = rows.Scan(&deviceId, &t)
+		var ts string
+		err = rows.Scan(&deviceId, &ts)
+		if err != nil {
+			return nil, err
+		}
+		t, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", ts)
 		if err != nil {
 			return nil, err
 		}
 		_, ok := devices[deviceId]
 		if len(devices) == 0 || ok {
-			latest[deviceId] = t
+			latest[deviceId] = reshtime.TimeToReshString(t)
 		}
 	}
+
 	return latest, nil
 }
 
@@ -99,7 +108,7 @@ func ReadEntries(db *sql.DB, latestFromDevice map[string]float64) ([]record.V1, 
 				continue
 			}
 		}
-		r.Time = fmt.Sprintf("%.4f", float64(t.Unix()))
+		r.Time = reshtime.TimeToReshString(t)
 		if exitCode.Valid {
 			r.ExitCode = int(exitCode.Int32)
 		}
@@ -138,7 +147,7 @@ func ReadEntries(db *sql.DB, latestFromDevice map[string]float64) ([]record.V1, 
 	return records, nil
 }
 
-func StoreRecords(db *sql.DB, records []record.V1) error {
+func storeRecords(db *sql.DB, records []record.V1) error {
 	const insertQuery = "INSERT INTO `records`(`recordId`, `deviceId`, `sessionId`, `cmdLine`, `exitCode`, `time`, " +
 		"`flags`, `home`, `pwd`, `realPwd`, `device`, `gitOriginRemote`, `duration`, `partOne`, " +
 		"`partsNotMerged`,`sessionExit`) VALUES "
@@ -173,5 +182,21 @@ func StoreRecords(db *sql.DB, records []record.V1) error {
 	}(stmt)
 
 	_, err = stmt.Exec(values...)
+	return err
+}
+
+func StoreRecords(db *sql.DB, records []record.V1) error {
+	batch := make([]record.V1, 0, oneBatchInsertLimit/numberOfFields) // Ensure to not go over internal SQLite limitations
+	for _, r := range records {
+		if (len(batch)+1)*numberOfFields > oneBatchInsertLimit {
+			err := storeRecords(db, batch)
+			if err != nil {
+				return err
+			}
+			batch = batch[:0]
+		}
+		batch = append(batch, r)
+	}
+	err := storeRecords(db, batch)
 	return err
 }
